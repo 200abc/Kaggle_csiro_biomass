@@ -49,6 +49,7 @@ def get_model(model_path: str, device: str = 'cpu'):
         processor = AutoImageProcessor.from_pretrained(model_path_str, local_files_only=True)
         
     return model.to(device), processor
+
 @torch.no_grad()
 def compute_embeddings(df: pd.DataFrame, model_path: str, patch_size: int = 520) -> pd.DataFrame:
     """
@@ -65,6 +66,13 @@ def compute_embeddings(df: pd.DataFrame, model_path: str, patch_size: int = 520)
     for _, row in tqdm(df.iterrows(), total=len(df), desc=f"Extracting features from {model_path}"):
         img_path = row['image_path']
         img = cv2.imread(img_path)
+
+        img = cv2.imread(str(img_path)) # Pathオブジェクトを文字列に変換
+        if img is None:
+            # ここで「どのパスを探して失敗したか」を表示してスキップする
+            print(f"\n⚠️ File not found or broken: {img_path}")
+            continue
+        
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         
         # パッチ分割
