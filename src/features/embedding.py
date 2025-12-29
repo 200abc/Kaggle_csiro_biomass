@@ -4,12 +4,13 @@
 """
 
 import torch
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import cv2
 from PIL import Image
 from tqdm.auto import tqdm
-from transformers import AutoProcessor, AutoImageProcessor, AutoModel, AutoTokenizer
+from transformers import AutoProcessor, AutoImageProcessor, AutoModel, AutoTokenizer, SiglipProcessor
 from src.config import CFG
 from src.data.preprocessing import split_image
 
@@ -23,13 +24,31 @@ def flush_memory():
 
 def get_model(model_path: str, device: str = 'cpu'):
     """モデルとプロセッサをロードする"""
-    model = AutoModel.from_pretrained(model_path, local_files_only=True)
-    try:
-        processor = AutoImageProcessor.from_pretrained(model_path)
-    except:
-        processor = AutoProcessor.from_pretrained(model_path)
-    return model.eval().to(device), processor
+    
+    # 1. パスをOSが認識できる「絶対パス」に強制変換する
+    # これにより、transformersがHub(URL)ではなくLocal(Folder)だと確信します
+    target_path = Path(model_path).absolute()
+    
+    if not target_path.exists():
+        raise FileNotFoundError(f"Model path not found: {target_path}")
+    
+    model_path_str = str(target_path)
+    print(f"Loading model from: {model_path_str}")
 
+    # 2. ロード実行
+    model = AutoModel.from_pretrained(
+        model_path_str, 
+        local_files_only=True,
+        trust_remote_code=True
+    )
+    
+    try:
+        # SigLIP専用のプロセッサを優先的に試す
+        processor = SiglipProcessor.from_pretrained(model_path_str, local_files_only=True)
+    except Exception:
+        processor = AutoImageProcessor.from_pretrained(model_path_str, local_files_only=True)
+        
+    return model.to(device), processor
 @torch.no_grad()
 def compute_embeddings(df: pd.DataFrame, model_path: str, patch_size: int = 520) -> pd.DataFrame:
     """
